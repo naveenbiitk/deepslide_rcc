@@ -431,7 +431,7 @@ def train_resnet(
     dataloaders = {
         x: torch.utils.data.DataLoader(dataset=image_datasets[x],
                                        batch_size=batch_size,
-                                       shuffle=(x is "train"),
+                                       shuffle=(x == "train"),
                                        num_workers=num_workers)
         for x in ("train", "val")
     }

@@ -28,7 +28,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--all_wsi",
     type=Path,
-    default=Path("all_wsi"),
+    default='/home/nbalaj4/data/DHMC_deepslide',
     help="Location of the WSI organized in subfolders by class")
 # For splitting into validation set.
 parser.add_argument("--val_wsi_per_class",
@@ -69,15 +69,15 @@ parser.add_argument("--patch_size",
 # The names of your to-be folders.
 parser.add_argument("--wsi_train",
                     type=Path,
-                    default=Path("wsi_train"),
+                    default=Path('/home/nbalaj4/data/DHMC_deepslide/wsi_train'),
                     help="Location to be created to store WSI for training")
 parser.add_argument("--wsi_val",
                     type=Path,
-                    default=Path("wsi_val"),
+                    default=Path('/home/nbalaj4/data/DHMC_deepslide/wsi_val'),
                     help="Location to be created to store WSI for validation")
 parser.add_argument("--wsi_test",
                     type=Path,
-                    default=Path("wsi_test"),
+                    default=Path('/home/nbalaj4/data/DHMC_deepslide/wsi_test'),
                     help="Location to be created to store WSI for testing")
 
 # Where the CSV file labels will go.
@@ -102,7 +102,7 @@ parser.add_argument("--labels_test",
 parser.add_argument(
     "--train_folder",
     type=Path,
-    default=Path("train_folder"),
+    default=Path("train_folder_cap20k"), #Path("train_folder"),
     help="Location of the automatically built training input folder")
 
 # Folders of patches by WSI in training set, used for finding training accuracy at WSI level.
@@ -267,7 +267,7 @@ parser.add_argument("--checkpoints_folder",
 parser.add_argument(
     "--checkpoint_file",
     type=Path,
-    default=Path("xyz.pt"),
+    default=Path("resnet18_e25_va0.57801.pt"),
     help="Checkpoint file to load if resume_checkpoint_path is True")
 # ImageNet pretrain?
 parser.add_argument("--pretrain",
@@ -287,7 +287,7 @@ parser.add_argument("--log_folder",
 parser.add_argument(
     "--auto_select",
     type=bool,
-    default=True,
+    default=False,
     help="Automatically select the model with the highest validation accuracy")
 # Where to put the training prediction CSV files.
 parser.add_argument(
@@ -353,12 +353,27 @@ parser.add_argument(
 #######################################################
 args = parser.parse_args()
 
+data_root   = "/home/nbalaj4/data/DHMC_deepslide"
+wsi_train   = "/home/nbalaj4/data/DHMC_deepslide/wsi_train"
+wsi_val     = "/home/nbalaj4/data/DHMC_deepslide/wsi_val"
+wsi_test    = "/home/nbalaj4/data/DHMC_deepslide/wsi_test"
+
+image_ext   = "png"
+by_folder   = False
+auto_select = False
+slide_overlap = 2.0         # ≈50% overlap if/when you patch again
+gen_val_patches_overlap_factor = 1.0
+# IMPORTANT: lock the classes to the real labels
+classes = ["Benign", "Chromophobe", "Clearcell", "Oncocytoma", "Papillary"]
+num_classes = len(classes)
+all_wsi = ""   # <= critical: empty (or point to the train patch folder below)
+train_folder = "train_folder_cap20k"
 # Device to use for PyTorch code.
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Automatically read in the classes.
-classes = get_classes(folder=args.all_wsi)
-num_classes = len(classes)
+# classes = get_classes(folder=args.all_wsi)
+# num_classes = len(classes)
 
 # This is the input for model training, automatically built.
 train_patches = args.train_folder.joinpath("train")
@@ -384,6 +399,7 @@ threshold_search = (0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
 # This order is the same order as your sorted classes.
 colors = ("red", "white", "blue", "green", "purple", "orange", "black", "pink",
           "yellow")
+
 
 # Print the configuration.
 # Source: https://stackoverflow.com/questions/44689546/how-to-print-out-a-dictionary-nicely-in-python/44689627

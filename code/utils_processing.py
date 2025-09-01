@@ -104,7 +104,7 @@ def get_subfolder_to_overlap(subfolders: List[Path],
         overlap_factor = max(
             1.0,
             math.pow(
-                math.sqrt(desired_crops_per_class / (subfolder_size / 0.013)),
+                math.sqrt(desired_crops_per_class / (subfolder_size+0.001 / 0.013)),
                 1.5))
         subfolder_to_overlap_factor[subfolder] = overlap_factor
         print(f"{subfolder}: {subfolder_size}MB, "
@@ -211,7 +211,7 @@ def duplicate_until_n(image_paths: List[Path], n: int) -> None:
     """
     num_dupls = n - len(image_paths)
 
-    print(f"balancing {image_paths[0].parent} by duplicating {num_dupls}")
+    #print(f"balancing {image_paths[0].parent} by duplicating {num_dupls}")
 
     for i in range(num_dupls):
         image_path = image_paths[i % len(image_paths)]
