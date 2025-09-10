@@ -163,14 +163,14 @@ parser.add_argument(
 # Recommend 2 for very high resolution, 3 for medium, and 5 not extremely high resolution images.
 parser.add_argument("--slide_overlap",
                     type=int,
-                    default=3,
+                    default=4,
                     help="Sliding window overlap factor for the testing phase")
 
 # Overlap factor to use when generating validation patches.
 parser.add_argument(
     "--gen_val_patches_overlap_factor",
     type=float,
-    default=1.5,
+    default=1.25,
     help="Overlap factor to use when generating validation patches.")
 
 parser.add_argument("--image_ext",
@@ -361,8 +361,8 @@ wsi_test    = "/home/nbalaj4/data/DHMC_deepslide/wsi_test"
 image_ext   = "png"
 by_folder   = False
 auto_select = False
-slide_overlap = 2.0         # ≈50% overlap if/when you patch again
-gen_val_patches_overlap_factor = 1.0
+slide_overlap = 1.25         # ≈50% overlap if/when you patch again
+gen_val_patches_overlap_factor = 1.25
 # IMPORTANT: lock the classes to the real labels
 classes = ["Benign", "Chromophobe", "Clearcell", "Oncocytoma", "Papillary"]
 num_classes = len(classes)

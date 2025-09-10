@@ -4,6 +4,7 @@ from sklearn.metrics import (accuracy_score, precision_score, recall_score,
                              f1_score, roc_auc_score, roc_curve, confusion_matrix)
 import matplotlib.pyplot as plt
 rng = np.random.default_rng(42)
+from typing import Optional
 
 import os, glob, pandas as pd, numpy as np
 
@@ -23,6 +24,39 @@ def build_slide2class(wsi_root):
                 s2c[sid] = cls
     return s2c
 
+# --- tolerant column handling ---
+def _norm(s: str) -> str:
+    # normalize header names: lowercase, remove spaces/underscores
+    return "".join(ch for ch in s.lower().strip() if ch.isalnum())
+
+def find_prob_column(df, user_prob_col: str = None) -> str:
+    # if user specified and exists (case/space-insensitive), honor it
+    actual_by_norm = {_norm(c): c for c in df.columns}
+    if user_prob_col:
+        key = _norm(user_prob_col)
+        if key in actual_by_norm:
+            return actual_by_norm[key]
+        raise ValueError(f"--prob_col='{user_prob_col}' not found. Available: {list(df.columns)}")
+
+    # try common aliases
+    candidates = [
+        "mean_prob_malignant", "prob_malignant", "p_malignant", "p_mal",
+        "slide_prob", "mean_prob", "prob", "probability", "malignant_prob"
+    ]
+    for name in candidates:
+        key = _norm(name)
+        if key in actual_by_norm:
+            return actual_by_norm[key]
+
+    # last resort: any single float column at the end that looks like prob in [0,1]
+    for c in reversed(df.columns):
+        try:
+            s = df[c].astype(float)
+            if ((s >= 0) & (s <= 1)).mean() > 0.95:
+                return c
+        except Exception:
+            continue
+    raise ValueError(f"Could not find probability column. Available columns: {list(df.columns)}")
 
 # def load_split(csv_path):
 #     df = pd.read_csv(csv_path)
@@ -32,8 +66,15 @@ def build_slide2class(wsi_root):
 #     y_score = df['mean_prob_malignant'].astype(float).to_numpy()
 #     slide_ids = df['slide_id'].astype(str).to_list()
 #     return y_true, y_score, slide_ids, df
-def load_split(csv_path, wsi_root=None):
+# def load_split(csv_path, wsi_root=None):
+def load_split(csv_path: str, wsi_root: Optional[str], prob_col: Optional[str] = None):
     df = pd.read_csv(csv_path)
+    # trim header whitespace
+    df.columns = [c.strip() for c in df.columns]
+    # find/standardize probability column
+    pcol = find_prob_column(df, prob_col)
+    if "mean_prob_malignant" not in df.columns:
+        df["mean_prob_malignant"] = df[pcol].astype(float)
 
     # pick a label column if present
     label_col = None
@@ -215,6 +256,9 @@ def main():
     ap.add_argument("--outdir", default="results_binary_wsi")
     ap.add_argument("--wsi_root", default="/home/nbalaj4/data/DHMC_deepslide",
                 help="Folder that contains wsi_train/wsi_val/wsi_test/<CLASS>/<SLIDE>.png")
+    ap.add_argument("--prob_col", default=None,
+                help="Name of probability column (optional). If omitted, auto-detects common aliases.")
+
 
     args = ap.parse_args()
 
@@ -225,9 +269,11 @@ def main():
     # yt, st, _, _ = load_split(args.test_csv)
 
     # new:
-    yv, sv, _, _ = load_split(args.val_csv, args.wsi_root)
-    yt, st, _, _ = load_split(args.test_csv, args.wsi_root)
+    # yv, sv, _, _ = load_split(args.val_csv, args.wsi_root)
+    # yt, st, _, _ = load_split(args.test_csv, args.wsi_root)
 
+    yv, sv, _, dfv = load_split(args.val_csv, args.wsi_root, args.prob_col)
+    yt, st, _, dft = load_split(args.test_csv, args.wsi_root, args.prob_col)
 
     # pick threshold on VAL
     tstar = pick_threshold_from_val(yv, sv, args.strategy, args.fixed_thresh)

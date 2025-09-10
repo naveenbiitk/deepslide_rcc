@@ -3,7 +3,12 @@ import os, csv, time, argparse
 from pathlib import Path
 import numpy as np
 from PIL import Image
-
+import warnings
+from PIL import Image, ImageFile
+Image.MAX_IMAGE_PIXELS = None          # disable hard cap (or set to a large int)
+ImageFile.LOAD_TRUNCATED_IMAGES = True # tolerate slightly malformed files
+warnings.simplefilter("ignore", Image.DecompressionBombWarning)
+import re
 import torch
 from torchvision import transforms
 from models.pvt_binary import PVTBinary
@@ -51,6 +56,39 @@ def infer_one_png(path, model, device, tfm, tile=224, stride=112, tissue_min_fra
     p = np.concatenate(probs, axis=0)
     return float((t1-t0)*1000.0), int(len(p)), float(p.mean())  # ms, n_patches, mean prob
 
+
+def _normalize_state_dict(sd):
+    # strip DistributedDataParallel prefix
+    sd = {k.replace("module.", "", 1): v for k, v in sd.items()}
+    # remap common Sequential-style keys to named submodules
+    remapped = {}
+    for k, v in sd.items():
+        if k.startswith("0."):          # backbone was the first Sequential child
+            remapped["backbone." + k[2:]] = v
+        elif k.startswith("1."):        # head was the second Sequential child
+            remapped["head." + k[2:]] = v
+        else:
+            remapped[k] = v
+    return remapped
+
+def load_any_checkpoint(model, path, map_location="cpu", strict=True):
+    ck = torch.load(path, map_location=map_location)
+    # unwrap common containers from various training scripts
+    if isinstance(ck, dict):
+        sd = ck.get("model_state") or ck.get("state_dict") or ck.get("model") or ck
+    else:
+        sd = ck
+    sd = _normalize_state_dict(sd)
+    try:
+        missing, unexpected = model.load_state_dict(sd, strict=strict)
+        if missing or unexpected:
+            print("[load] missing:", missing, "| unexpected:", unexpected)
+    except RuntimeError as e:
+        print("[load] strict load failed:", e, "\nRetrying with strict=False…")
+        missing, unexpected = model.load_state_dict(sd, strict=False)
+        print("[load] missing:", missing, "| unexpected:", unexpected)
+    return model
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--wsi_dir", required=True, help="folder of PNG WSIs (class subfolders OK)")
@@ -63,6 +101,7 @@ def main():
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--mean", nargs=3, type=float, default=[0.7488,0.6045,0.7521])
     ap.add_argument("--std",  nargs=3, type=float, default=[0.1571,0.1921,0.1504])
+    ap.add_argument("--arch", default="pvt_v2_b1")
     args = ap.parse_args()
 
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
@@ -70,8 +109,11 @@ def main():
 
     # model
     ckpt = torch.load(args.ckpt, map_location=device)
-    model = PVTBinary(pretrained=False).to(device).eval()
-    model.load_state_dict(ckpt["model"] if "model" in ckpt else ckpt, strict=True)
+    #model = PVTBinary(pretrained=False).to(device).eval()
+    #model.load_state_dict(ckpt["model"] if "model" in ckpt else ckpt, strict=True)
+
+    model = PVTBinary(name=args.arch, pretrained=False).to(device).eval()
+    model = load_any_checkpoint(model, args.ckpt, map_location=device, strict=True)
 
     tfm = transforms.Compose([
         transforms.Resize(args.tile),
